@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <style type="text/css">
+    body {
+      margin: 10px;
+      padding: 0;
+      position: relative;
+    }
+
+    #frame {
+      border: 1px solid black;
+      width: 200px;
+      height: 400px;
+      /*background-color: gold;*/
+      margin: 0 auto;
+      box-sizing: content-box;
+    }
+
+    .row {
+      /*width: 20px;*/
+      /*height: 20px;*/
+      background-color: black;
+      /*position: relative;*/
+      /*top: 40px;*/
+      /*border: 1px solid green;*/
+      /*bottom: -20px;*/
+
+      margin: 0;
+      padding: 0;
+      height: 20px;
+      box-sizing: content-box;
+
+    }
+
+    .block {
+      margin: 0;
+      padding: 0;
+      float: left;
+      display: inline-grid;
+      background: black;
+      width: 20px;
+      height: 20px;
+      border: 1px solid #666;
+      box-sizing: border-box;
+    }
+
+
+    .c0 {
+      background-color: rgb(255, 255, 255);
+    }
+
+    .c1 {
+      background-color: rgb(206, 145, 120);
+    }
+
+    .c2 {
+      background-color: rgb(215, 186, 125);
+    }
+
+    .c3 {
+      background-color: rgb(116, 216, 254);
+    }
+
+    .c4 {
+      background-color: rgb(206, 124, 133);
+    }
+
+    .c5 {
+      background-color: rgb(197, 134, 192);
+    }
+
+    .c6 {
+      background-color: rgb(176, 206, 163);
+    }
+  </style>
+</head>
+<body>
+
+<div id="preview" class="preview"></div>
+<div id="info" class="info">
+  <label>得分</label>
+  <div id="score" class="value">0</div>
+  <label>速度等级</label>
+  <select id="speed" class="value">
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3">3</option>
+    <option value="4">4</option>
+    <option value="5">5</option>
+    <option value="6">6</option>
+    <option value="7">7</option>
+    <option value="8">8</option>
+    <option value="9">9</option>
+  </select>
+</div>
+<div id="command" class="command-panel">
+  <div id="restart">重新开始</div>
+  <div id="pause">暂停 / 继续</div>
+</div>
+<div id="frame"></div>
+</body>
+<script src="lib/jquery-3.4.1.js"></script>
+<script>
+
+  function randomInt() {
+    return ~~(1000 * Math.random());
+  }
+
+
+  /**
+   * 代表下降中的实体
+   * @param point
+   * @param shape
+   * @constructor
+   */
+  class Block {
+    constructor(shapeIndex, formIndex) {
+      formIndex = formIndex || randomInt();
+      this.position = new Point(0, 0);
+      this.shape = SHAPES[shapeIndex % SHAPES.length];
+      this.formIndex = formIndex % this.shape.formsCount();
+    }
+
+    rotate(width = Infinity, height = Infinity) {
+      width = width || 9999;
+      height = height || 9999;
+      this.formIndex = (this.formIndex + 1) % this.shape.formsCount();
+      const p = getRotatePosition(this.position, this.form(), width, height);
+      return this.setPosition(p);
+    }
+
+    moveLeft() {
+      if (this.left() > 0) {
+        this.position = this.position.move(-1);
+      }
+      return this;
+    }
+
+    moveRight(width) {
+      width = width || 9999;
+      var right1 = this.right();
+      if (right1 + 1 < width) {
+        this.position = this.position.move(1);
+      }
+      return this;
+    }
+
+
+    setPosition(x, y) {
+      this.position = y === void 0 ? new Point(x) : new Point(x, y);
+      return this;
+    }
+
+    form() {
+      return this.shape.getFrom(this.formIndex);
+    }
+
+    width() {
+      var width = this.form().weight;
+      return width;
+    }
+
+    right() {
+      return this.left() + this.width() - 1;
+    }
+
+    left() {
+      return this.position.x;
+    }
+
+    height() {
+      return this.form().height;
+    }
+
+    color() {
+      return this.shape.color;
+    };
+
+    bottom() {
+      return this.top() + this.height() - 1;
+    }
+
+
+    moveDown(height /*number*/) /*block*/ {
+      height = height || 9999;
+      if (this.bottom() + 1 < height) {
+        this.position = this.position.move(0, 1);
+      }
+      return this;
+    }
+
+    /**
+     *
+     * @param left 当前下落中的形状的横坐标
+     * @param top 当前下落中的形状的纵坐标
+     * @param form 变换的形状
+     * @returns {Uint8Array}
+     */
+    fasten(left, top, form) {
+
+      form = form || this.shape.getFrom(this.formIndex);
+      left = left || this.position.x;
+      top = top || this.position.y;
+      var color1 = this.color();
+      return form.points()
+          .map(function (point) {
+                return new BlockPoint(left + point.x, top + point.y, color1)
+              }
+          )
+          .filter((t) => {
+                // console.log(t)
+                return t.x >= 0 && t.y >= 0
+              }
+          );
+    }
+
+    left() {
+      return this.position.x;
+    }
+
+    top() {
+      return this.position.y;
+    }
+
+    fastenOffset(offsetX, offsetY) {
+      return this.fasten(this.left() + offsetX, this.top() + offsetY);
+    };
+
+    fastenRotate(width, height) {
+      const nextIndex = (this.formIndex + 1) % this.shape.formsCount();
+      const nextForm = this.shape.getFrom(nextIndex);
+      const p = getRotatePosition(this.position, nextForm, width, height);
+      return this.fasten(p.x, p.y, nextForm);
+    }
+
+  }
+  ;
+
+
+  class Point {
+    constructor(x, y) {
+      if (y === void 0) {
+        this.x = x.x;
+        this.y = x.y;
+      } else {
+        this.x = x;
+        this.y = y;
+      }
+    }
+
+
+    move(offsetX = 0, offsetY = 0) {
+      offsetX = offsetX || 0;
+      offsetY = offsetY || 0;
+
+      return new Point(this.x + offsetX, this.y + offsetY);
+    }
+  }
+
+  /**
+   *
+   * 下落中的点位置
+   */
+  class BlockPoint extends Point {
+    constructor(x, y, color) {
+      super(x, y);
+      this.color = color || 'c2';
+    }
+  }
+
+  class Form {
+    constructor(points) {
+      var right = 0;
+      var bottom = 0;
+
+      this._points = points.map(function (p) { // all shape points
+        let point = new Point(p[0], p[1]);
+        right = Math.max(right, point.x);
+        bottom = Math.max(bottom, point.y);
+        return point;
+      });
+
+      this.weight = right + 1;
+      this.height = bottom + 1;
+    }
+
+    points() {
+      return this._points;
+    }
+  };
+
+
+  /**
+   * 形状的定义 包括多种form,还有颜色
+   * @param colorStr
+   * @param forms
+   * @constructor
+   */
+  class Shape {
+    constructor(colorStr, forms) {
+      this.color = 'c' + colorStr % 7;
+      this.forms = forms;
+    }
+
+    getFrom(index) {
+      const formsCount = this.forms.length;
+      return this.forms[index % formsCount];
+    };
+
+    formsCount() {
+      return this.forms.length;
+    };
+  }
+
+
+  var SHAPES = [
+    // 正方形
+    [
+      [[0, 0], [0, 1], [1, 0], [1, 1]]
+    ],
+    // |
+    [
+      [[0, 0], [0, 1], [0, 2], [0, 3]],
+      [[0, 0], [1, 0], [2, 0], [3, 0]]
+    ],
+    // L
+    [
+      [[0, 0], [0, 1], [0, 2], [1, 2]],
+      [[0, 0], [1, 0], [2, 0], [0, 1]],
+      [[0, 0], [1, 0], [1, 1], [1, 2]],
+      [[2, 0], [0, 1], [1, 1], [2, 1]]
+    ],
+    // 反 L
+    [
+      [[1, 0], [1, 1], [0, 2], [1, 2]],
+      [[0, 0], [0, 1], [1, 1], [2, 1]],
+      [[0, 0], [1, 0], [0, 1], [0, 2]],
+      [[0, 0], [1, 0], [2, 0], [2, 1]]
+    ],
+    // Z
+    [
+      [[0, 0], [1, 0], [1, 1], [2, 1]],
+      [[1, 0], [0, 1], [1, 1], [0, 2]]
+    ],
+    // 反 Z
+    [
+      [[1, 0], [2, 0], [0, 1], [1, 1]],
+      [[0, 0], [0, 1], [1, 1], [1, 2]]
+    ],
+    // T
+    [
+      [[0, 0], [1, 0], [2, 0], [1, 1]],
+      [[1, 0], [0, 1], [1, 1], [1, 2]],
+      [[1, 0], [0, 1], [1, 1], [2, 1]],
+      [[0, 0], [0, 1], [1, 1], [0, 2]]
+    ]
+  ].map(function (formData, i) { // All shape variants
+    var forms = formData.map(function (form) { // all form
+      return new Form(form);
+    });
+    return new Shape(i, forms);
+
+  });
+
+  /**
+   *
+   * 修正模块边界位置
+   *
+   */
+  function getRotatePosition(position, form, right, bottom) {
+    return {
+      x: Math.min(position.x, right - form.weight),
+      y: Math.min(position.y, bottom - form.height)
+    };
+  }
+
+  // 只处理渲染问题
+  class Matrix {
+    intervalNum;
+    _changingSpeed;
+    set changingSpeed(func) {
+      this._changingSpeed = func;
+    }
+
+    get changingSpeed() {
+      return this._changingSpeed;
+    }
+
+    constructor(container, weight, height) {
+      var $frame = document.getElementById(container);
+      this._width = weight;
+      this._height = height;
+      this.score = 0;
+      var ROW_SIZE = height, BLOCK_SIZE = weight;
+      this._data = this.reset(weight, height); // 固定的图形
+      this.block = new Block(randomInt());
+      this.rows = [];
+      this.fastened = [];// aArray<BlockPoint> 已经固定的实体
+      for (let i = 0; i < ROW_SIZE; i++) {
+        let arrRow = [];
+        var row = document.createElement('div');
+        row.setAttribute('class', 'row');
+        // let row = $("<div>").addClass("row");
+        // row.blocks = [];
+        for (let j = 0; j < BLOCK_SIZE; j++) {
+          var block = document.createElement('span');
+
+          block.setAttribute("class", 'block');
+          row.appendChild(block);
+          arrRow.push(block);
+        }
+        $frame.append(row);
+        this.rows.push(arrRow);
+      }
+
+
+    }
+
+    changeScore(newScore) {
+      console.log(`new score ${newScore}`);
+      let Dscore = document.getElementById('score');
+      Dscore.innerHTML = this.score = this.score + newScore;
+      if (this.score > 2) {
+        this.changingSpeed(100);
+      }
+    }
+
+
+    erase() {
+      let k = this._data.length - 1;
+      let c = 0;
+      for (let i = k; i >= 0; i--) {
+        let count = 0;
+        for (let j = 0; j < this._width; j++) {
+          if (this._data[i][j]) {
+            count++
+          }
+          this._data[k][j] = this._data[i][j];
+        }
+        if (count < this._width) {
+          k--;
+        } else {
+          c++;
+        }
+      }
+      this.changeScore(c);
+
+      for (let i = 0; i < this._height; i++) {
+        for (let j = 0; j < this._width; j++) {
+          if (this._data[i][j]) {
+            this._data[i][j].y = i;
+          }
+        }
+      }
+
+
+    }
+
+
+    addBlockPoints(points) {
+      points.forEach(point => {
+        this.set(point);
+      });
+    }
+
+    set(first, y, point) {
+      if (typeof first === "number") {
+        this._data[y][first] = point;
+      } else {
+        this._data[first.y][first.x] = first;
+      }
+    }
+
+    reset(width, height) {
+      return Array.apply(null, {length: height}).map(() => {
+        return this.createRow(width);
+      });
+    }
+
+
+    createRow(width) {
+      return Array.apply(null, {length: width});
+    }
+
+    width() {
+      return this._width;
+    }
+
+    height() {
+      return this._height;
+    }
+
+    getCell(x, y) {
+      if (typeof x === "object") {
+        y = x.y;
+        x = x.x;
+      }
+
+      if (x >= this.width || y >= this.height) {
+        return {};
+      }
+
+      return this.rows[y][x];
+    };
+
+    render() {
+      this.rows.forEach(row => {
+        // console.log(row);
+        row.forEach((block) => {
+
+          block.removeAttribute('class');
+          block.classList.add('block');
+        });
+      });
+
+
+      this.fastened.forEach(bPoint => this.getCell(bPoint).classList.add(bPoint.color));
+
+      if (this.block) {
+        this.block.fasten().forEach(
+            bPoint => {
+              let cell = this.getCell(bPoint);
+              cell.classList.add(bPoint.color);
+            }
+        );
+      }
+    };
+
+    fasten() {
+      return this._data.reduce((all, row) => {
+        return all.concat(row.filter(t => t));
+      }, []);
+    }
+
+    isPutable(points /*Points*/) {
+      const [width, height] = [this.width(), this.height()];
+
+      return points.every(t => {
+        if (t.x < 0 || t.x >= width || t.y < 0 || t.y >= height) {
+          return false;
+        }
+
+        return !this._data[t.y][t.x];
+      });
+    }
+
+
+  }
+
+
+  class Puzzle {
+
+  }
+
+  var BlockFactory = {
+
+
+    create: function () {
+      return new Block(randomInt());
+    }
+  }
+
+
+  class BlockController {
+    intervalNum;
+
+    constructor(width, height, matrix) {
+      this._next = BlockFactory.create();
+      this.current = null; //block
+      // this._matrix = new Matrix(width, height);
+      this._matrix = matrix;
+      this._matrix.block = this.current;
+    }
+
+
+    changedNext(func) {
+      this.ch = func;
+    }
+
+    get next() {
+      return this._next;
+    }
+
+    set next(next2) {
+      if (this.ch) {
+        this.ch(next2);
+      }
+      this._next = next2;
+    }
+
+
+    processNextShape() {
+      const block = this._matrix.block = this.current = this.next;
+      this.next = BlockFactory.create();
+      // this.render();
+      var initalX = (this._matrix.width() - block.width()) / 2;
+      console.log(initalX);
+      console.log(~~initalX);
+      this.current.setPosition(Math.floor(initalX), -block.height());
+      this.processFallDown();
+    }
+
+    processFallDown() {
+      if (!this.current) {
+        return;
+      }
+      const current = this.current;
+      const blocks = current.fastenOffset(0, 1);
+      if (!this._matrix.isPutable(blocks)) {
+        this.fastenCurrent();
+        return;
+      }
+
+      current.moveDown();
+      this.render();
+    }
+
+    rotate() {
+      const [width, height] = [this._matrix.width(), this._matrix.height()];
+      const current = this.current;
+      if (!current || !this._matrix.isPutable(current.fastenRotate(width, height))) {
+        return;
+      }
+
+      current.rotate(width, height);
+      this.render();
+    }
+
+    moveLeft() {
+      const current = this.current;
+      if (!current || !this._matrix.isPutable(current.fastenOffset(-1, 0))) {
+        return;
+      }
+
+      current.moveLeft();
+      this.render();
+    }
+
+    moveRight() {
+      const width = this._matrix.width();
+      const current = this.current;
+      if (!current || !this._matrix.isPutable(current.fastenOffset(1, 0))) {
+        return;
+      }
+
+      current.moveRight(width);
+      this.render();
+    }
+
+    moveDown() {
+      const height = this._matrix.height();
+      const current = this.current;
+      if (!current || !this._matrix.isPutable(current.fastenOffset(0, 1))) {
+        return;
+      }
+
+      current.moveDown(height);
+      this.render();
+    }
+
+    process() {
+      if (!this.current) {
+        this.processNextShape();
+      } else {
+        this.processFallDown();
+      }
+    }
+
+    render(shouldFasten) {
+      if (shouldFasten) {
+        this._matrix.fastened = this.fastenMatrix();
+      }
+      this._matrix.render();
+    }
+
+    fastenMatrix() {
+      return this._matrix.fasten();
+    }
+
+    fallDownDirectly() {
+      const current = this.current;
+      if (!current) {
+        return;
+      }
+
+      const left = current.left();
+      const height = this._matrix.height();
+      for (let top = current.top() + 1; top <= height; top++) {
+        if (!this._matrix.isPutable(current.fasten(left, top))) {
+          current.setPosition(left, top - 1);
+          break;
+        }
+      }
+
+      // this.render();
+      this.fastenCurrent();
+    }
+
+    fastenCurrent() {
+      if (!this.current) {
+        return;
+      }
+      // this.trigger("fastening");
+      console.log(this.current);
+      if (this.current.top() <= 0) {
+        this.render();
+        // this.trigger("gameover");
+        this.gaveover();
+        return;
+      }
+
+      this._matrix.addBlockPoints(this.current.fasten());
+      this.current = null;
+
+      this.erase();
+      this._matrix.block = null;
+      this.render(true);
+
+
+      // this.render();
+    }
+
+    erase() {
+      this._matrix.erase();
+
+    }
+
+    gaveover() {
+      alert('game over!');
+      clearInterval(this.intervalNum);
+
+    }
+  }
+
+
+  class Tetris {
+    constructor() {
+      this.matrix = new Matrix('frame', 10, 20);
+      this.preview = new Matrix('preview', 4, 4);
+      this.matrix.changingSpeed = (tick) => {
+        this.resetClock(tick);
+      };
+      // this.matrix.render();
+      this.blockController = new BlockController(10, 20, this.matrix);
+      this.blockController.changedNext((next) => {
+        this.preview.block = next;
+        this.preview.render();
+      });
+      this.setClock(500);
+      this.blockController.intervalNum = this.intervalNum;
+      const controller = this.blockController;
+      const handlers = {
+        // up
+        "38": controller.rotate.bind(controller),
+        // left
+        "37": controller.moveLeft.bind(controller),
+        // right
+        "39": controller.moveRight.bind(controller),
+        // down
+        "40": controller.moveDown.bind(controller),
+        // fall down to bottom    keyboard -> space
+        "32": controller.fallDownDirectly.bind(controller),
+      };
+
+      $(document).on("keydown", e => {
+        const handler = handlers[e.keyCode];
+        if (handler) {
+          handler();
+        }
+      });
+
+
+    }
+
+    setClock(tick) {
+      this.intervalNum = setInterval(this.blockController.process.bind(this.blockController), tick);
+      this.blockController.intervalNum = this.intervalNum;
+    }
+
+    resetClock(tick) {
+      clearInterval(this.intervalNum);
+      this.setClock(tick);
+    }
+  }
+
+  // new Tetris();
+
+
+  var SHAPES = [
+    // 正方形
+    [
+      [[0, 0], [0, 1], [1, 0], [1, 1]]
+    ],
+    // |
+    [
+      [[0, 0], [0, 1], [0, 2], [0, 3]],
+      [[0, 0], [1, 0], [2, 0], [3, 0]]
+    ],
+    // L
+    [
+      [[0, 0], [0, 1], [0, 2], [1, 2]],
+      [[0, 0], [1, 0], [2, 0], [0, 1]],
+      [[0, 0], [1, 0], [1, 1], [1, 2]],
+      [[2, 0], [0, 1], [1, 1], [2, 1]]
+    ],
+    // 反 L
+    [
+      [[1, 0], [1, 1], [0, 2], [1, 2]],
+      [[0, 0], [0, 1], [1, 1], [2, 1]],
+      [[0, 0], [1, 0], [0, 1], [0, 2]],
+      [[0, 0], [1, 0], [2, 0], [2, 1]]
+    ],
+    // Z
+    [
+      [[0, 0], [1, 0], [1, 1], [2, 1]],
+      [[1, 0], [0, 1], [1, 1], [0, 2]]
+    ],
+    // 反 Z
+    [
+      [[1, 0], [2, 0], [0, 1], [1, 1]],
+      [[0, 0], [0, 1], [1, 1], [1, 2]]
+    ],
+    // T
+    [
+      [[0, 0], [1, 0], [2, 0], [1, 1]],
+      [[1, 0], [0, 1], [1, 1], [1, 2]],
+      [[1, 0], [0, 1], [1, 1], [2, 1]],
+      [[0, 0], [0, 1], [1, 1], [0, 2]]
+    ]
+  ];
+
+
+  class GShape {
+    constructor() {
+      this.shapeX = randomInt() % SHAPES.length;
+
+      this.shapeY = randomInt() % SHAPES[this.shapeX].length;
+      this.numberOfForm = SHAPES[this.shapeX].length;
+      this.color = 'c' + (randomInt() % 6);
+
+      this.xpad = 3;
+      this.ypad = 0;
+    }
+  }
+
+  const WIDTH = 10, HEIGHT = 20;
+  let score = 0;
+  let current = new GShape(), next;
+  let fastened = [20][10];
+  var Gblocks = (function () {
+    var blocks = [];
+    var $frame = document.getElementById('frame');
+    for (let i = 0; i < HEIGHT; i++) {
+      let arrRow = [];
+      var row = document.createElement('div');
+      row.setAttribute('class', 'row');
+      for (let j = 0; j < WIDTH; j++) {
+        var block = document.createElement('span');
+        block.setAttribute("class", 'block');
+        row.appendChild(block);
+        arrRow.push(block);
+      }
+      $frame.append(row);
+      blocks.push(arrRow);
+
+    }
+    return blocks;
+  })();
+
+  var renderBack = function () {
+    for (let i = 0; i < Gblocks.length; i++) {
+      for (let j = 0; j < Gblocks[i].length; j++) {
+        Gblocks[i][j].setAttribute("class", 'block');
+      }
+    }
+    var currentShape = SHAPES[current.shapeX][current.shapeY];
+    console.log(currentShape);
+    for (let i = 0; i < currentShape.length; i++) {
+      Gblocks[currentShape[i][1] + current.ypad][currentShape[i][0] + current.xpad].classList.add(current.color);
+    }
+
+  };
+
+
+  setInterval(renderBack, 1000);
+  setInterval(function () {
+    current.ypad += 1;
+  }, 1000)
+</script>
+
+
+</html>
