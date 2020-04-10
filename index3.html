@@ -787,7 +787,12 @@
   }
 
   // new Tetris();
-
+  var SHAPE_ATTRIBUTE = [
+    [[2, 2]], // width,height
+    [[1, 4], [4, 1]]
+    ,
+    [2, 3], []
+  ]
 
   var SHAPES = [
     // 正方形
@@ -834,15 +839,56 @@
 
 
   class GShape {
-    constructor() {
-      this.shapeX = randomInt() % SHAPES.length;
+    constructor(x, y, color, xpad, ypad) {
+      if (x || x == 0) {
+        this.shapeX = x;
+      } else {
+        this.shapeX = randomInt() % SHAPES.length;
+      }
+      if (y || y == 0) {
+        this.shapeY = y;
+      } else {
+        this.shapeY = randomInt() % (SHAPES[this.shapeX].length);
+      }
 
-      this.shapeY = randomInt() % SHAPES[this.shapeX].length;
       this.numberOfForm = SHAPES[this.shapeX].length;
-      this.color = 'c' + (randomInt() % 6);
 
-      this.xpad = 3;
-      this.ypad = 0;
+      this.color = color || color == 0 ? color : randomInt() % 6;
+      this.calculateXY();
+
+
+      this.xpad = xpad || xpad == 0 ? xpad : 3; // x
+      this.ypad = ypad || ypad == 0 ? ypad : -2;
+    }
+
+    calculateXY() {
+      console.log(this.shapeX + ": " + this.shapeY);
+      var shape = SHAPES[this.shapeX][this.shapeY];
+      console.log(shape);
+      var xMin = shape[0][0], xMax = shape[0][0], yMin = shape[0][1], yMax = shape[0][1];
+      for (let i = 1; i < shape.length; i++) {
+        if (shape[i][0] < xMin)
+          xMax = shape[i][0];
+        if (shape[i][0] > xMax)
+          xMax = shape[i][0];
+
+
+        if (shape[i][1] < yMin)
+          xMax = shape[i][1];
+        if (shape[i][1] > yMax)
+          yMax = shape[i][1]
+      }
+      this.width = xMax - xMin + 1;
+      this.height = yMax - yMin + 1;
+    }
+
+    getNextShape() {
+      return new GShape(this.shapeX, ((this.shapeY + 1) % (SHAPES[this.shapeX].length)), this.color, this.xpad, this.ypad);
+    }
+
+    setNextShape(shape) {
+      this.shapeY = this.shapeY + 1 % SHAPES[this.shapeX].length;
+      this.calculateXY();
     }
   }
 
@@ -869,26 +915,183 @@
     }
     return blocks;
   })();
+  var fixedBlock = [];
+  for (let i = 0; i < HEIGHT; i++) {
+    fixedBlock[i] = [];
+    for (let j = 0; j < WIDTH; j++) {
+      fixedBlock[i][j] = -1;
+    }
+  }
 
-  var renderBack = function () {
+  var renderFix = function () {
+    for (let i = 0; i < fixedBlock.length; i++) {
+      for (let j = 0; j < fixedBlock[i].length; j++) {
+        if (fixedBlock[i][j] != -1) {
+          Gblocks[i][j].classList.add('c' + fixedBlock[i][j]);
+        }
+      }
+    }
+  }
+
+  function addFixedBlock(current) {
+    var currentShape = SHAPES[current.shapeX][current.shapeY];
+    for (let i = 0; i < currentShape.length; i++) {
+      if (currentShape[i][1] + current.ypad < 0)
+        continue;
+      fixedBlock[currentShape[i][1] + current.ypad][currentShape[i][0] + current.xpad] = current.color;
+    }
+  }
+
+  function isTouch(current, x, y) {
+    if (current.ypad + current.height + y >= HEIGHT + 1 // far bottom
+        || current.xpad + current.width + x >= WIDTH + 1 // far right
+        || current.xpad + current.width + x < 0) { // far left
+      return true;
+    }
+    // console.log()
+    var currentShape = SHAPES[current.shapeX][current.shapeY];
+    for (let i = 0; i < currentShape.length; i++) {
+      if (currentShape[i][1] + current.ypad < 0)
+        continue;
+      if (fixedBlock[currentShape[i][1] + current.ypad + y][currentShape[i][0] + current.xpad + x] != -1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // true if game over.
+  function checkGame() {
+    console.log(fixedBlock);
+    for (let i = 0; i < WIDTH; i++) {
+      var flag = false;
+      for (let j = 0; j < HEIGHT; j++) {
+        if (fixedBlock[j][i] == -1) {
+          flag = true;
+          break;
+        }
+      }
+      if (!flag) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  let triggerVal;
+  var renderBack = function (action) {
+
+    // if (checkGame()) {
+    //   alert("game over");
+    // }
     for (let i = 0; i < Gblocks.length; i++) {
       for (let j = 0; j < Gblocks[i].length; j++) {
         Gblocks[i][j].setAttribute("class", 'block');
       }
     }
+
+
+    // var
+// "38": controller.rotate.bind(controller),
+    // // left
+    // "37": controller.moveLeft.bind(controller),
+    // // right
+    // "39": controller.moveRight.bind(controller),
+    // // down
+    // "40": controller.moveDown.bind(controller),
+    // // fall down to bottom    keyboard -> space
+    // "32": controller.fallDownDirectly.bind(controller),
+    // console.log(fixedBlock);
+    console.log(action);
+    if (action == 38) {  // up
+
+      if (!isTouch(current.getNextShape(), 0, 0)) {
+        current = current.getNextShape();
+      }
+
+    } else if (action == 37) { // left
+      if (!isTouch(current, -1, 0)) {
+        current.xpad -= 1;
+      }
+    } else if (action == 39) { // right
+      if (!isTouch(current, 1, 0)) {
+        current.xpad += 1;
+      }
+    } else if (action == 40) { // down
+
+      if (isTouch(current, 0, 1)) {
+        addFixedBlock(current);
+        if (current.ypad <= 0) {
+          clearInterval(triggerVal);
+          alert("game over");
+        }
+        // renderFix();
+        current = new GShape();
+        // console.log(233);
+        // return;
+      } else {
+        current.ypad += 1;
+      }
+      // if (current.ypad + current.height + 1 > HEIGHT || isTouch(current, 0, 1)) {
+      //   addFixedBlock(current);
+      //   // renderFix();
+      //   current = new GShape();
+      //   // console.log(233);
+      //   // return;
+      // }
+    }
+
+
     var currentShape = SHAPES[current.shapeX][current.shapeY];
     console.log(currentShape);
+
+    renderFix();
     for (let i = 0; i < currentShape.length; i++) {
-      Gblocks[currentShape[i][1] + current.ypad][currentShape[i][0] + current.xpad].classList.add(current.color);
+      console.log(currentShape[i][1] + current.ypad);
+      if (currentShape[i][1] + current.ypad < 0)
+        continue;
+
+      Gblocks[currentShape[i][1] + current.ypad][currentShape[i][0] + current.xpad].classList.add('c' + current.color);
     }
+
 
   };
 
 
-  setInterval(renderBack, 1000);
-  setInterval(function () {
-    current.ypad += 1;
-  }, 1000)
+  var direction = {
+    // "38": {x: 0, y: 1}, // up
+    "left": {x: -1, y: 0}, // left
+    "right": {x: 1, y: 0}, // right
+    "down": {x: 0, y: 1}, // down
+    "fall": {x: 0, y: 1}, // fall down to bottom  keyboard -> space
+
+  }
+  var handlers = {
+    // // up
+    // "38": controller.rotate.bind(controller),
+    // // left
+    // "37": controller.moveLeft.bind(controller),
+    // // right
+    // "39": controller.moveRight.bind(controller),
+    // // down
+    // "40": controller.moveDown.bind(controller),
+    // // fall down to bottom    keyboard -> space
+    // "32": controller.fallDownDirectly.bind(controller),
+  };
+
+
+  $(document).on("keydown", e => {
+    // const handler = handlers[e.keyCode];
+    // if (handler) {
+    renderBack(e.keyCode);
+    // }
+  });
+
+
+  triggerVal = setInterval(renderBack, 300, 40);
+  // setInterval(function () {
+  //   current.ypad += 1;
+  // }, 1000)
 </script>
 
 
