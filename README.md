@@ -10,3 +10,7 @@
 
 ### bugs
 1. 在左下角,可以左移进去
+
+
+### References
+* https://github.com/henshmi/Tetris.ts
